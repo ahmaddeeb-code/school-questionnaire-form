@@ -10,14 +10,14 @@ A minimal Google Forms–style survey module built with core PHP 8.3, MySQL 8, H
 │   ├── helpers
 │   ├── middleware
 │   ├── models
-│   ├── views
-│   └── autoload.php
+│   └── views
 ├── public
 │   ├── css
 │   ├── js
 │   └── index.php
 ├── resources/lang
 ├── storage/uploads
+├── vendor/autoload.php
 ├── config.php
 └── database.sql
 ```
@@ -41,7 +41,7 @@ A minimal Google Forms–style survey module built with core PHP 8.3, MySQL 8, H
 | Family   | omar@example.com   | Family123!   |
 
 ## Development notes
-- No frameworks are used; request handling relies on simple conditional dispatch inside `public/index.php`.
+- No frameworks are used; routing is handled by a lightweight front controller.
 - CSRF tokens are enforced on all POST forms.
 - Prepared statements (PDO) and file upload sanitisation provide baseline security.
 - Autosave for response forms uses `localStorage` drafts and resume via unique tokens.

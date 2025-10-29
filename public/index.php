@@ -1,4 +1,5 @@
 <?php
+use App\Router;
 use App\Controllers\AuthController;
 use App\Controllers\DashboardController;
 use App\Controllers\FormController;
@@ -12,29 +13,21 @@ use App\Middleware\AuthMiddleware;
 use App\Helpers\Auth;
 use App\Helpers\I18n;
 
-require __DIR__ . '/../app/autoload.php';
+require __DIR__ . '/../vendor/autoload.php';
 
 $config = require __DIR__ . '/../config.php';
 
 session_start();
 
-$dsn = sprintf(
-    'mysql:host=%s;port=%d;dbname=%s;charset=%s',
-    $config['db']['host'],
-    $config['db']['port'],
-    $config['db']['database'],
-    $config['db']['charset']
-);
+$dsn = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $config['db']['host'], $config['db']['port'], $config['db']['database'], $config['db']['charset']);
 $pdo = new PDO($dsn, $config['db']['username'], $config['db']['password'], [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
 ]);
 
 Auth::setConnection($pdo);
-I18n::init(
-    $_SESSION['locale'] ?? $config['app']['locale_default'],
-    $config['app']['locales'],
-    $config['app']['locale_default']
-);
+I18n::init($_SESSION['locale'] ?? $config['app']['locale_default'], $config['app']['locales'], $config['app']['locale_default']);
+
+$router = new Router();
 
 $authController = new AuthController($pdo);
 $dashboardController = new DashboardController($pdo);
@@ -46,85 +39,94 @@ $analyticsController = new AnalyticsController($pdo);
 $exportController = new ExportController($pdo);
 $localeController = new LocaleController($pdo);
 
-$method = $_SERVER['REQUEST_METHOD'];
-$path = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '/', '/') ?: '/';
+$router->get('/', fn() => header('Location: /login'));
+$router->get('/login', fn() => $authController->showLogin());
+$router->post('/login', fn() => $authController->login());
+$router->get('/logout', fn() => $authController->logout());
 
-$handled = true;
+$router->get('/locale/en', fn() => $localeController->switch('en'));
+$router->get('/locale/ar', fn() => $localeController->switch('ar'));
 
-if ($method === 'GET' && $path === '/') {
-    header('Location: /login');
-    exit;
-} elseif ($method === 'GET' && $path === '/login') {
-    $authController->showLogin();
-} elseif ($method === 'POST' && $path === '/login') {
-    $authController->login();
-} elseif ($method === 'GET' && $path === '/logout') {
-    $authController->logout();
-} elseif ($method === 'GET' && $path === '/locale/en') {
-    $localeController->switch('en');
-} elseif ($method === 'GET' && $path === '/locale/ar') {
-    $localeController->switch('ar');
-} elseif ($method === 'GET' && $path === '/dashboard') {
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $dashboardController->index());
-} elseif ($method === 'GET' && $path === '/forms') {
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $formController->index());
-} elseif ($method === 'GET' && $path === '/forms/create') {
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $formController->create());
-} elseif ($method === 'POST' && $path === '/forms') {
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $formController->store());
-} elseif ($method === 'GET' && preg_match('#^/forms/(\d+)/edit$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $formController->edit($formId));
-} elseif ($method === 'POST' && preg_match('#^/forms/(\d+)$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $formController->update($formId));
-} elseif ($method === 'GET' && preg_match('#^/forms/(\d+)/builder$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $builderController->builder($formId));
-} elseif ($method === 'POST' && preg_match('#^/forms/(\d+)/questions$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $builderController->addQuestion($formId));
-} elseif ($method === 'POST' && preg_match('#^/forms/(\d+)/reorder$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $builderController->reorder($formId));
-} elseif ($method === 'GET' && preg_match('#^/forms/(\d+)/assign$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $assignController->show($formId));
-} elseif ($method === 'POST' && preg_match('#^/forms/(\d+)/assign$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $assignController->assign($formId));
-} elseif ($method === 'GET' && preg_match('#^/forms/(\d+)/analytics$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $analyticsController->show($formId));
-} elseif ($method === 'GET' && preg_match('#^/forms/(\d+)/export/responses$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $exportController->exportResponses($formId));
-} elseif ($method === 'GET' && preg_match('#^/forms/(\d+)/export/analytics$#', $path, $matches)) {
-    $formId = (int)$matches[1];
-    $guard = AuthMiddleware::requireLogin(['admin', 'employee']);
-    $guard(fn() => $exportController->exportAnalytics($formId));
-} elseif ($method === 'GET' && preg_match('#^/respond/([A-Za-z0-9]+)$#', $path, $matches)) {
-    $responseController->show($matches[1]);
-} elseif ($method === 'POST' && preg_match('#^/respond/([A-Za-z0-9]+)$#', $path, $matches)) {
-    $responseController->submit($matches[1]);
-} else {
-    $handled = false;
-}
+$router->get('/dashboard', function () use ($dashboardController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($dashboardController) {
+        $dashboardController->index();
+    });
+});
 
-if (!$handled) {
-    http_response_code(404);
-    echo '404 Not Found';
-}
+$router->get('/forms', function () use ($formController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($formController) {
+        $formController->index();
+    });
+});
+$router->get('/forms/create', function () use ($formController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($formController) {
+        $formController->create();
+    });
+});
+$router->post('/forms', function () use ($formController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($formController) {
+        $formController->store();
+    });
+});
+$router->get('/forms/(\d+)/edit', function ($id) use ($formController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($formController, $id) {
+        $formController->edit((int)$id);
+    });
+});
+$router->post('/forms/(\d+)', function ($id) use ($formController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($formController, $id) {
+        $formController->update((int)$id);
+    });
+});
+
+$router->get('/forms/(\d+)/builder', function ($id) use ($builderController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($builderController, $id) {
+        $builderController->builder((int)$id);
+    });
+});
+$router->post('/forms/(\d+)/questions', function ($id) use ($builderController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($builderController, $id) {
+        $builderController->addQuestion((int)$id);
+    });
+});
+$router->post('/forms/(\d+)/reorder', function ($id) use ($builderController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($builderController, $id) {
+        $builderController->reorder((int)$id);
+    });
+});
+
+$router->get('/forms/(\d+)/assign', function ($id) use ($assignController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($assignController, $id) {
+        $assignController->show((int)$id);
+    });
+});
+$router->post('/forms/(\d+)/assign', function ($id) use ($assignController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($assignController, $id) {
+        $assignController->assign((int)$id);
+    });
+});
+
+$router->get('/forms/(\d+)/analytics', function ($id) use ($analyticsController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($analyticsController, $id) {
+        $analyticsController->show((int)$id);
+    });
+});
+$router->get('/forms/(\d+)/export/responses', function ($id) use ($exportController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($exportController, $id) {
+        $exportController->exportResponses((int)$id);
+    });
+});
+$router->get('/forms/(\d+)/export/analytics', function ($id) use ($exportController) {
+    AuthMiddleware::requireLogin(['admin', 'employee'])(function () use ($exportController, $id) {
+        $exportController->exportAnalytics((int)$id);
+    });
+});
+
+$router->get('/respond/([A-Za-z0-9]+)', function ($token) use ($responseController) {
+    $responseController->show($token);
+});
+$router->post('/respond/([A-Za-z0-9]+)', function ($token) use ($responseController) {
+    $responseController->submit($token);
+});
+
+$router->dispatch($_SERVER['REQUEST_METHOD'], $_SERVER['REQUEST_URI']);
